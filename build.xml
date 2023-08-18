@@ -1,0 +1,169 @@
+<!DOCTYPE project>
+<project xmlns:ivy="antlib:org.apache.ivy.ant" name="DigestMaker" basedir="." default="jars">
+
+    <property name="dist.dir" value="${basedir}/dist" />
+    <property name="build.zip.dir" value="${basedir}/build_zip" />
+	
+    <ivy:settings />	
+    <ivy:cachepath pathid="bobby.prototype.compile" conf="default" />
+	<ivy:cachepath pathid="bobby.prototype.test" conf="test" />
+
+
+    <target name="digest-maker-jar" depends="compile" >
+    	<mkdir dir="${dist.dir}/lib" />
+        <jar destfile="${dist.dir}/lib/digestmaker.jar">
+        	<fileset dir="${basedir}/build/classes/" />
+        	<fileset dir="${basedir}/resource" includes="*.properties" />
+            </jar>
+    </target>
+	
+	<target name="package" depends="executable-jar" description="creates the zip which includes the executable jar and all dependencies">
+		<!-- Ivy dependencies -->
+		<delete dir="${build.zip.dir}"/>
+
+		<!-- zip -->
+		<mkdir dir="${dist.dir}/zip"/>
+		
+		
+		<zip destfile="${dist.dir}/zip/DigestMaker.zip">
+			<fileset file="${dist.dir}/lib/DigestRunnerUtil.jar" />
+	        <mappedresources>
+	            <resources refid="bobby.prototype.compile"/>
+	            <chainedmapper>
+	                <flattenmapper/>
+	                <globmapper from="*" to="lib/*"/>
+	            </chainedmapper>
+	        </mappedresources>
+		</zip>
+		
+	</target>
+    <target name="executable-jar" depends="compile" description="build executable jar" >
+    	<mkdir dir="${dist.dir}/lib" />
+    	
+    	  <pathconvert property="mf.classpath" pathsep=" ">
+    	      <path refid="bobby.prototype.compile" />
+    	  	  <chainedmapper>
+    	           <flattenmapper />
+                   <globmapper from="*" to="lib/*"/>
+    	  	  </chainedmapper>
+    	  </pathconvert>
+
+    	  <tstamp/> <!-- Populated the TODAY variable-->
+    	  <manifest file="MANIFEST.MF">
+    	    <attribute name="Built-By" value="Bobby White"/>
+    	    <attribute name="Created-By" value="Bobby White"/>
+    	    <attribute name="Main-Class" value="bobby.sfdc.prototype.DigestMaker"/>
+    	    <!--<attribute name="Implementation-Version" value="${version.number}-b${build.number}"/> -->
+    	    <attribute name="Built-Date" value="${TODAY}"/>
+    	    <attribute name="Class-Path" value="${mf.classpath}" />
+    	  </manifest>
+          <jar destfile="${dist.dir}/lib/DigestRunnerUtil.jar" manifest="MANIFEST.MF">
+        	<fileset dir="${basedir}/build/classes/" />
+        	<fileset dir="${basedir}/resource" includes="*.properties" />
+          </jar>
+    </target>
+
+    <target name="jars" depends="digest-maker-jar,executable-jar" description="build all of the jars associated with this project" />
+	
+
+    <target name="compile" >
+         <mkdir dir="${basedir}/build/classes/"/>
+	 <javac destdir="${basedir}/build/classes/" classpathref="bobby.prototype.compile" includeAntRuntime="false" debug="true">
+	        <src path="${basedir}/src"/>
+	        <include name="bobby/**"/>
+		    <exclude name="**/test/*"/>
+	 </javac>
+	</target>
+	
+    <target name="clean" description="clean the build environment of any intermediate and final artifacts">
+    	<delete dir="${dist.dir}}" />
+    	<delete dir="${basedir}/build"/>
+    	<delete dir="${basedir}/dist"/>
+        <delete dir="${basedir}/junit"/>
+    	<mkdir dir="${basedir}/dist/lib" />
+        <mkdir dir="${basedir}/build/classes"/>
+        <mkdir dir="${basedir}/junit/reports"/>
+        <ivy:resolve conf="default" />
+    </target>
+	
+    <target name="eclipse-log4j">
+        <mkdir dir="${basedir}/bin" />
+        <copy todir="${basedir}/bin" >
+           <fileset dir="${basedir}/resource" includes="*.properties" />
+	</copy>
+    </target>
+
+    <target name="resolve" description="Resolve dependencies" >
+        <ivy:resolve/>
+    </target>
+    
+    <target name="retrieve-default" depends="resolve">
+        <ivy:retrieve pattern="lib/default/[artifact]-[revision].[ext]" conf="default" />
+    </target>
+
+    <target name="retrieve-myconf" depends="resolve">
+        <ivy:retrieve pattern="lib/myconf/[artifact]-[revision].[ext]" conf="myconf" />
+    </target>
+
+    <target name="retrieve-all" depends="resolve">
+        <ivy:retrieve pattern="lib/[conf]/[artifact]-[type]-[revision].[ext]" conf="*" />
+    </target>
+
+    <target name="deliver" depends="retrieve-all">
+        <ivy:deliver deliverpattern="dist/lib/[artifact]-[type]-[revision].[ext]"
+              status="milestone" />
+    </target>
+
+    <target name="publish" depends="deliver" description="Publish jars to Ivy">
+        <ivy:publish resolver="local" 
+                     artifactspattern="dist/lib/[artifact].[ext]"  forcedeliver="true"
+         />
+    </target>
+	
+    <target name="compile-tests" depends="jars" >
+
+       <mkdir dir="junit/build/classes"/>
+	    <javac destdir="junit/build/classes"  includeAntRuntime="false" debug="true">
+	    	<classpath>
+			     <fileset dir="dist/lib">
+			        <include name="**/*.jar"/>
+			     </fileset>
+	    		<path refid="bobby.prototype.test" />
+	    	</classpath>
+		        <src path="${basedir}/test"/>
+		 </javac>
+	</target>
+
+	<target name="junit-base" description="Run Digest Maker junits" depends="compile-tests" >
+
+		<junit printsummary="yes" haltonfailure="yes" maxmemory="512m" >
+		  <classpath>
+		    <path refid="bobby.prototype.test"/>
+		  	<path location="junit/build/classes" />
+		     <fileset dir="dist/lib">
+		        <include name="**/*.jar"/>
+		     </fileset>
+		  </classpath>
+
+
+		  <formatter type="plain"/>
+
+		  <batchtest fork="yes" todir="junit/reports" >
+		    <fileset dir="test">
+			  <include name="bobby/prototype/**/*Test*.java"/>
+		    </fileset>
+		  </batchtest>
+		</junit>
+
+	</target>
+	
+	<target name="makepom" description="Generate a Maven POM file from the Ivy.xml" >
+	   <ivy:makepom ivyfile="${basedir}/ivy.xml" pomfile="${basedir}/pom.xml" conf="default,runtime">
+	      <mapping conf="default" scope="compile"/>
+	      <mapping conf="runtime" scope="runtime"/>
+	      <dependency group="bobby.prototype.sfdc" artifact="DigestMaker" version="1.0" optional="true"/>
+	   </ivy:makepom>
+	</target>
+
+
+</project>
